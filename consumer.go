@@ -2,8 +2,9 @@ package main
 
 import (
 	"fmt"
-	"github.com/streadway/amqp"
 	"log"
+
+	"github.com/streadway/amqp"
 )
 
 type Consumer struct {
@@ -13,7 +14,7 @@ type Consumer struct {
 	done       chan error
 }
 
-func NewConsumer(amqpURI, exchange, exchangeType, queue, key, ctag string) (*Consumer, error) {
+func NewConsumer(amqpURI, exchange, exchangeType, queue, key, ctag string, exclusive, autoAck bool) (*Consumer, error) {
 	c := &Consumer{
 		connection: nil,
 		channel:    nil,
@@ -32,7 +33,7 @@ func NewConsumer(amqpURI, exchange, exchangeType, queue, key, ctag string) (*Con
 	log.Printf("Getting Channel")
 	c.channel, err = c.connection.Channel()
 	if err != nil {
-		return nil, fmt.Errorf("hannel: %s", err)
+		return nil, fmt.Errorf("channel: %s", err)
 	}
 
 	log.Printf("Declaring Exchange (%s)", exchange)
@@ -50,12 +51,12 @@ func NewConsumer(amqpURI, exchange, exchangeType, queue, key, ctag string) (*Con
 
 	log.Printf("Declaring Queue (%s)", queue)
 	state, err := c.channel.QueueDeclare(
-		queue, // name of the queue
-		true,  // durable
-		false, // delete when usused
-		false, // exclusive
-		false, // noWait
-		nil,   // arguments
+		queue,     // name of the queue
+		true,      // durable
+		false,     // auto-delete
+		exclusive, // exclusive
+		false,     // noWait
+		nil,       // arguments
 	)
 	if err != nil {
 		return nil, fmt.Errorf("Queue Declare: %s", err)
@@ -74,19 +75,19 @@ func NewConsumer(amqpURI, exchange, exchangeType, queue, key, ctag string) (*Con
 
 	log.Printf("Queue bound to Exchange, starting Consume (consumer tag '%s')", c.tag)
 	deliveries, err := c.channel.Consume(
-		queue, // name
-		c.tag, // consumerTag,
-		true,  // autoAck
-		false, // exclusive
-		false, // noLocal
-		false, // noWait
-		nil,   // arguments
+		queue,     // name
+		c.tag,     // consumerTag,
+		autoAck,   // autoAck
+		exclusive, // exclusive
+		false,     // noLocal
+		false,     // noWait
+		nil,       // arguments
 	)
 	if err != nil {
 		return nil, fmt.Errorf("Queue Consume: %s", err)
 	}
 
-	go handle(deliveries, c.done)
+	go handle(deliveries, c.done, c.channel)
 
 	return c, nil
 }
@@ -107,7 +108,7 @@ func (c *Consumer) Shutdown() error {
 	return <-c.done
 }
 
-func handle(deliveries <-chan amqp.Delivery, done chan error) {
+func handle(deliveries <-chan amqp.Delivery, done chan error, ch *amqp.Channel) {
 	for d := range deliveries {
 		log.Printf(
 			"Got %dB delivery: [%v] %s",
@@ -115,6 +116,7 @@ func handle(deliveries <-chan amqp.Delivery, done chan error) {
 			d.DeliveryTag,
 			d.Body,
 		)
+		ch.Ack(d.DeliveryTag, false)
 	}
 	log.Printf("Handle: deliveries channel closed")
 	done <- nil

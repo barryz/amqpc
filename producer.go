@@ -2,8 +2,9 @@ package main
 
 import (
 	"fmt"
-	"github.com/streadway/amqp"
 	"log"
+
+	"github.com/streadway/amqp"
 )
 
 type Producer struct {
@@ -76,8 +77,8 @@ func (p *Producer) Publish(exchange, routingKey, body string) error {
 			ContentType:     "text/plain",
 			ContentEncoding: "",
 			Body:            []byte(body),
-			DeliveryMode:    amqp.Transient, // 1=non-persistent, 2=persistent
-			Priority:        0,              // 0-9
+			DeliveryMode:    amqp.Persistent, // 1=non-persistent, 2=persistent
+			Priority:        0,               // 0-9
 			// a bunch of application/implementation-specific fields
 		},
 	); err != nil {
