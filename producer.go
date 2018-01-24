@@ -8,18 +8,20 @@ import (
 )
 
 type Producer struct {
-	connection *amqp.Connection
-	channel    *amqp.Channel
-	tag        string
-	done       chan error
+	connection   *amqp.Connection
+	channel      *amqp.Channel
+	tag          string
+	done         chan error
+	blockingChan chan amqp.Blocking
 }
 
 func NewProducer(amqpURI, exchange, exchangeType, key, ctag string, reliable bool) (*Producer, error) {
 	p := &Producer{
-		connection: nil,
-		channel:    nil,
-		tag:        ctag,
-		done:       make(chan error),
+		connection:   nil,
+		channel:      nil,
+		tag:          ctag,
+		done:         make(chan error),
+		blockingChan: make(chan amqp.Blocking),
 	}
 
 	var err error
@@ -29,6 +31,8 @@ func NewProducer(amqpURI, exchange, exchangeType, key, ctag string, reliable boo
 	if err != nil {
 		return nil, fmt.Errorf("Dial: ", err)
 	}
+
+	p.blockingChan = p.connection.NotifyBlocked(make(chan amqp.Blocking))
 
 	log.Printf("Getting Channel ")
 	p.channel, err = p.connection.Channel()
@@ -62,6 +66,7 @@ func NewProducer(amqpURI, exchange, exchangeType, key, ctag string, reliable boo
 	// }
 
 	return p, nil
+
 }
 
 func (p *Producer) Publish(exchange, routingKey, body string) error {

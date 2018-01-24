@@ -135,11 +135,36 @@ func startProducer(done chan error, body *string, messageCount, interval int) {
 		log.Fatalf("Error while starting producer : %s", err)
 	}
 
+	shouldBlock := make(chan string, 1)
+	shouldUnBlock := make(chan struct{}, 1)
+	defer func() {
+		close(shouldBlock)
+		close(shouldUnBlock)
+	}()
+	go func() {
+		for b := range p.blockingChan {
+			if b.Active {
+				shouldBlock <- b.Reason
+			} else {
+				shouldUnBlock <- struct{}{}
+			}
+		}
+	}()
+
 	var i int = 1
+outer:
 	for messageCount != 0 && i < messageCount {
-		publish(p, body, i)
-		i++
-		time.Sleep(time.Duration(interval) * time.Millisecond)
+		select {
+		case r := <-shouldBlock:
+			log.Printf("connection blocked. waiting for unblock..., reason is : %s\n", r)
+			<-shouldUnBlock
+			log.Println("connection unblocked.")
+			continue outer
+		default:
+			publish(p, body, i)
+			i++
+			time.Sleep(time.Duration(interval) * time.Millisecond)
+		}
 	}
 
 	done <- nil
